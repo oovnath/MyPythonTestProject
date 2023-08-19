@@ -10,7 +10,7 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 OPENAI_KEY = os.environ.get("OPENAI_KEY")
 # print(OPENAI_KEY)
-
+openai.api_key=OPENAI_KEY
 def get_stock_price(ticker):
     return str(yf.Ticker(ticker).history(period='1y').iloc[-1].Close)
 
@@ -57,7 +57,7 @@ def plot_stock_price(ticker):
     plt.close()
 
 
-function =[
+functions =[
     {
         'name':'get_stock_price',
         'description':'Gets the latest stock price given the ticker symbol of a company.',
@@ -163,3 +163,60 @@ available_function={
     'calculate_MACD':calculate_MACD,
     'plot_stock_price':plot_stock_price,
 }
+
+if 'messages' not in st.session_state:
+    st.session_state['messages']=[]
+
+st.title('stock Analysis Chatbot Assistant')
+
+user_input = st.text_input('Your input: ')
+
+if user_input:
+    
+    # try:
+        st.session_state['messages'].append({'role':'user', 'content':f'{user_input}'})
+        # print(st.session_state['messages'])
+        response = openai.ChatCompletion.create(
+            # model= 'gpt-3.5-turbo-0613',
+            model= 'gpt-3.5-turbo-0613',
+            messages=st.session_state['messages'],
+            functions = functions,
+            function_call='auto'
+        )
+        print("test here")
+        response_message=response['choices'][0]['message']
+        
+        if response_message.get('function_call'):
+            function_name = response_message['function_call']['name']
+            function_args=json.loads(response_message['function_call']['name'])
+            if function_name in ['get_stock_price', 'calculate_RSI', 'calculate_MACD', 'plot_stock_price']:
+                args_dect = {'ticker':function_args.get('ticker')}
+            elif function_name in ['alculate_SMA','calculate_EMA']:
+                args_dect = {'ticker':function_args.get('ticker'), 'window':function_args.get('window')}
+
+            function_to_call = available_function[function_name]
+            function_response=function_to_call(**args_dect)
+
+            if function_name == 'plot_stock_price':
+                st.image('stock.png')
+            else:
+                st.session_state['messages'].append('response_message')
+                st.session_state['messages'].append(
+                    {
+                        'role':'function',
+                        'name':function_name,
+                        'content':function_response
+                    }
+                )
+                second_response =openai.ChatCompletion.create(
+                    model='gpt-3.5-turbo-0613',
+                    messages=st.session_state['messages']
+                )
+                st.text(second_response['choices'][0]['message']['content'])
+                st.text(second_response['messages'].append({'role':'assistant', 'content':response_message['choices'][0]['message']['content']}))
+                st.session_state['messages']
+        else:
+            st.text(response_message['content'])
+            st.session_state['messages'].append({'role':'assistant', 'content':response_message['content']})
+    # except:
+    #     st.text('tryagain')
